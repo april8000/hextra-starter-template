@@ -2,10 +2,10 @@ name: Update Content from Backend Dispatch
 
 on:
   repository_dispatch:
-    types: [daily-updated]  # 响应后端触发的事件
-  workflow_dispatch:  # 允许手动触发
+    types: [daily-updated]
+  workflow_dispatch:
   schedule:
-    - cron: '35 0 * * *'  # 每天北京时间8:35自动检查更新（比主仓库晚5分钟）
+    - cron: '35 0 * * *'  # 比主项目晚5分钟执行
 
 env:
   TZ: Asia/Shanghai
@@ -20,101 +20,128 @@ jobs:
       - name: Checkout current repository
         uses: actions/checkout@v4
 
-      # 拉取源仓库的最新内容
       - name: Clone source repository
         uses: actions/checkout@v4
         with:
-          repository: 'april8000/ai-insight-daily-token'  # 您的数据源仓库
-          ref: 'main'  # 根据您的实际分支调整
+          repository: 'april8000/ai-insight-daily-token'
+          ref: 'main'
           path: 'source-repo'
           token: ${{ secrets.GITHUB_TOKEN }}
 
-      # 检查是否有新内容
       - name: Check for new content
         id: check-updates
         run: |
           echo "🔍 检查源仓库中的新内容..."
           
+          has_updates=false
+          files_processed=0
+          
           if [ -d "source-repo/daily" ]; then
-            # 查找今天和昨天的文件
-            TODAY=$(date +%Y-%m-%d)
-            YESTERDAY=$(date -d "yesterday" +%Y-%m-%d)
+            echo "📁 源仓库daily目录存在"
+            echo "源仓库daily目录内容:"
+            ls -la source-repo/daily/
             
-            for CHECK_DATE in $TODAY $YESTERDAY; do
-              if [ -f "source-repo/daily/${CHECK_DATE}.md" ]; then
-                # 检查目标文件是否已存在
-                if [ ! -f "content/docs/${CHECK_DATE}.md" ]; then
-                  echo "找到新文件: ${CHECK_DATE}.md"
-                  echo "has_updates=true" >> $GITHUB_OUTPUT
-                  echo "latest_date=${CHECK_DATE}" >> $GITHUB_OUTPUT
-                  break
+            # 确保content/docs目录存在
+            mkdir -p "content/docs"
+            
+            # 遍历所有source-repo/daily中的.md文件
+            for source_file in source-repo/daily/*.md; do
+              if [ -f "$source_file" ]; then
+                filename=$(basename "$source_file")
+                echo "处理文件: $filename"
+                
+                # 检查是否为日期格式的文件
+                if echo "$filename" | grep -qE '^[0-9]{4}-[0-9]{2}-[0-9]{2}\.md$'; then
+                  file_date=$(echo "$filename" | sed 's/\.md$//')
+                  
+                  echo "文件日期: $file_date"
+                  
+                  # 目标文件路径（简化版，直接放在docs目录下）
+                  target_file="content/docs/$filename"
+                  
+                  # 强制更新所有文件（因为这是starter模板）
+                  echo "✅ 强制处理文件: $source_file -> $target_file"
+                  
+                  # 直接写入Front Matter
+                  echo "---" > "$target_file"
+                  echo "title: \"AI日报 ${file_date}\"" >> "$target_file"
+                  echo "date: ${file_date}T08:00:00+08:00" >> "$target_file"
+                  echo "weight: 1" >> "$target_file"
+                  echo "---" >> "$target_file"
+                  echo "" >> "$target_file"
+                  
+                  # 添加原始内容
+                  cat "$source_file" >> "$target_file"
+                  
+                  echo "✅ 文件已处理: $target_file"
+                  files_processed=$((files_processed + 1))
+                  has_updates=true
+                else
+                  echo "⚠️ 文件名格式不符合YYYY-MM-DD.md: $filename"
                 fi
               fi
             done
             
-            if [ "${has_updates:-false}" != "true" ]; then
-              echo "没有发现新内容"
-              echo "has_updates=false" >> $GITHUB_OUTPUT
-            fi
+            echo "📊 处理结果:"
+            echo "处理的文件数量: $files_processed"
+            echo "是否有更新: $has_updates"
+            
+            # 设置输出变量
+            echo "has_updates=$has_updates" >> $GITHUB_OUTPUT
+            echo "files_processed=$files_processed" >> $GITHUB_OUTPUT
+            
           else
             echo "❌ 源仓库中没有daily目录"
+            echo "源仓库根目录内容:"
+            ls -la source-repo/ || echo "无法列出源仓库目录"
             echo "has_updates=false" >> $GITHUB_OUTPUT
+            echo "files_processed=0" >> $GITHUB_OUTPUT
           fi
 
-      # 处理并转换内容格式（简化版本）
-      - name: Process and convert content
-        if: steps.check-updates.outputs.has_updates == 'true'
-        run: |
-          LATEST_DATE=${{ steps.check-updates.outputs.latest_date }}
-          
-          echo "📝 处理日期: ${LATEST_DATE}"
-          
-          # 确保目录存在
-          mkdir -p "content/docs"
-          
-          # 处理内容
-          if [ -f "source-repo/daily/${LATEST_DATE}.md" ]; then
-            echo "🔄 处理内容..."
-            
-            # 生成Hugo Front Matter（简化版）
-            cat > "content/docs/${LATEST_DATE}.md" << EOF
----
-title: "AI日报 ${LATEST_DATE}"
-date: ${LATEST_DATE}T08:00:00+08:00
-weight: 1
----
-
-EOF
-            
-            # 添加原始内容
-            tail -n +2 "source-repo/daily/${LATEST_DATE}.md" >> "content/docs/${LATEST_DATE}.md"
-            
-            echo "✅ 内容已处理: content/docs/${LATEST_DATE}.md"
-          fi
-
-      # 提交更改
       - name: Commit and push changes
         if: steps.check-updates.outputs.has_updates == 'true'
         run: |
+          echo "📤 准备提交更改..."
+          
           git config --local user.email "action@github.com"
           git config --local user.name "GitHub Action"
           
+          echo "当前git状态:"
+          git status
+          
+          echo "待提交的文件:"
           git add .
+          git status --porcelain
+          
           if git diff --staged --quiet; then
             echo "ℹ️ 没有需要提交的更改"
           else
-            git commit -m "📰 更新AI日报 - ${{ steps.check-updates.outputs.latest_date }}"
+            echo "✅ 发现更改，准备提交..."
+            git commit -m "📰 更新AI日报 - 处理文件数: ${{ steps.check-updates.outputs.files_processed }}"
             git push
-            echo "✅ 内容已更新并推送"
+            echo "🎉 内容已更新并推送到仓库!"
           fi
 
-      # 发送完成通知
-      - name: Notify completion
+      - name: Summary
         if: always()
         run: |
-          if [ "${{ steps.check-updates.outputs.has_updates }}" == "true" ]; then
-            echo "🎉 Starter模板内容更新完成！"
-            echo "📅 更新日期: ${{ steps.check-updates.outputs.latest_date }}"
+          echo "📊 执行总结:"
+          echo "工作流触发方式: ${{ github.event_name }}"
+          echo "是否有更新: ${{ steps.check-updates.outputs.has_updates }}"
+          echo "处理文件数: ${{ steps.check-updates.outputs.files_processed }}"
+          
+          echo ""
+          echo "📁 当前content目录结构:"
+          if [ -d "content" ]; then
+            find content -type f -name "*.md" | sort
           else
-            echo "ℹ️ 没有检测到内容更新"
+            echo "content目录不存在"
+          fi
+          
+          echo ""
+          echo "📅 源仓库daily目录内容:"
+          if [ -d "source-repo/daily" ]; then
+            ls -la source-repo/daily/
+          else
+            echo "源仓库daily目录不存在"
           fi
