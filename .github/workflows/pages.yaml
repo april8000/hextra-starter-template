@@ -37,27 +37,53 @@ jobs:
         uses: actions/checkout@v4
         with:
           fetch-depth: 0  # fetch all history for .GitInfo and .Lastmod
-          submodules: false  # 修改：禁用子模块以避免source-repo问题
+          submodules: false
+      
       - name: Setup Go
         uses: actions/setup-go@v5
         with:
-          go-version: '1.21'  # 修改：使用稳定版本
+          go-version: '1.21'
+      
       - name: Setup Pages
         id: pages
         uses: actions/configure-pages@v4
+      
       - name: Setup Hugo
         run: |
           wget -O ${{ runner.temp }}/hugo.deb https://github.com/gohugoio/hugo/releases/download/v${HUGO_VERSION}/hugo_extended_${HUGO_VERSION}_linux-amd64.deb \
           && sudo dpkg -i ${{ runner.temp }}/hugo.deb
+          hugo version
+      
+      - name: Initialize Hugo modules
+        run: |
+          echo "=== 检查配置文件 ==="
+          ls -la
+          cat hugo.yaml || echo "hugo.yaml not found"
+          cat go.mod || echo "go.mod not found"
+          
+          echo "=== 初始化Hugo模块 ==="
+          hugo mod download
+          hugo mod tidy
+          hugo mod verify
+          
+          echo "=== 检查模块状态 ==="
+          hugo mod graph || echo "Failed to generate module graph"
+      
       - name: Build with Hugo
         env:
           # For maximum backward compatibility with Hugo modules
           HUGO_ENVIRONMENT: production
           HUGO_ENV: production
         run: |
+          echo "=== 开始构建 ==="
           hugo \
             --gc --minify \
-            --baseURL "${{ steps.pages.outputs.base_url }}/"
+            --baseURL "${{ steps.pages.outputs.base_url }}/" \
+            --verbose
+          
+          echo "=== 检查构建结果 ==="
+          ls -la public/ || echo "Public directory not found"
+      
       - name: Upload artifact
         uses: actions/upload-pages-artifact@v3
         with:
