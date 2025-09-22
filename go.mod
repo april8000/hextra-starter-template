@@ -1,4 +1,4 @@
-module github.com/april8000/Hextra-AI-Insight-Daily
+module github.com/april8000/hextra-starter-template
 
 go 1.21
 
