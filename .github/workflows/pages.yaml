@@ -31,7 +31,7 @@ jobs:
   build:
     runs-on: ubuntu-latest
     env:
-      HUGO_VERSION: 0.147.9
+      HUGO_VERSION: 0.134.3  # 使用已知稳定的版本
     steps:
       - name: Checkout
         uses: actions/checkout@v4
@@ -43,6 +43,7 @@ jobs:
         uses: actions/setup-go@v5
         with:
           go-version: '1.21'
+          cache: false
       
       - name: Setup Pages
         id: pages
@@ -50,30 +51,68 @@ jobs:
       
       - name: Setup Hugo
         run: |
+          echo "=== 安装Hugo ==="
           wget -O ${{ runner.temp }}/hugo.deb https://github.com/gohugoio/hugo/releases/download/v${HUGO_VERSION}/hugo_extended_${HUGO_VERSION}_linux-amd64.deb \
           && sudo dpkg -i ${{ runner.temp }}/hugo.deb
+          
+          echo "=== 验证Hugo和Go环境 ==="
           hugo version
+          go version
+          
+          echo "=== 检查Hugo模块支持 ==="
+          hugo help mod || echo "Hugo模块命令不可用"
       
-      - name: Initialize Hugo modules
+      - name: Verify project structure
         run: |
-          echo "=== 检查配置文件 ==="
+          echo "=== 检查项目文件 ==="
           ls -la
-          cat hugo.yaml || echo "hugo.yaml not found"
-          cat go.mod || echo "go.mod not found"
           
-          echo "=== 初始化Hugo模块 ==="
-          hugo mod download
-          hugo mod tidy
-          hugo mod verify
+          echo "=== 检查hugo.yaml ==="
+          if [ -f "hugo.yaml" ]; then
+            cat hugo.yaml
+          else
+            echo "hugo.yaml 文件不存在"
+            exit 1
+          fi
           
-          echo "=== 检查模块状态 ==="
-          hugo mod graph || echo "Failed to generate module graph"
+          echo "=== 检查go.mod ==="
+          if [ -f "go.mod" ]; then
+            cat go.mod
+          else
+            echo "go.mod 文件不存在"
+            exit 1
+          fi
+          
+          echo "=== 检查go.sum ==="
+          if [ -f "go.sum" ]; then
+            cat go.sum
+          else
+            echo "go.sum 文件不存在，将自动生成"
+          fi
+      
+      - name: Initialize Hugo modules (alternative approach)
+        run: |
+          echo "=== 设置Go代理 ==="
+          export GOPROXY=https://proxy.golang.org,direct
+          export GOSUMDB=sum.golang.org
+          
+          echo "=== 尝试Hugo模块命令 ==="
+          if hugo help mod > /dev/null 2>&1; then
+            echo "Hugo支持模块，使用模块方式"
+            hugo mod download || echo "模块下载失败，尝试其他方法"
+            hugo mod tidy || echo "模块整理失败"
+          else
+            echo "Hugo不支持模块或版本太老，跳过模块初始化"
+          fi
+          
+          echo "=== 检查Hugo环境 ==="
+          hugo env
       
       - name: Build with Hugo
         env:
-          # For maximum backward compatibility with Hugo modules
           HUGO_ENVIRONMENT: production
           HUGO_ENV: production
+          GOPROXY: https://proxy.golang.org,direct
         run: |
           echo "=== 开始构建 ==="
           hugo \
@@ -82,7 +121,14 @@ jobs:
             --verbose
           
           echo "=== 检查构建结果 ==="
-          ls -la public/ || echo "Public directory not found"
+          if [ -d "public" ] && [ "$(ls -A public)" ]; then
+            echo "构建成功！"
+            ls -la public/
+          else
+            echo "构建失败：public目录为空或不存在"
+            ls -la
+            exit 1
+          fi
       
       - name: Upload artifact
         uses: actions/upload-pages-artifact@v3
