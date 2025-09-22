@@ -2,19 +2,12 @@
 name: Deploy Hugo site to Pages
 
 on:
-  workflow_run:
-    workflows: ["Update Content from Backend Dispatch"]
-    types:
-      - completed
-      
   # Runs on pushes targeting the default branch
   push:
     branches: ["main"]
 
   # Allows you to run this workflow manually from the Actions tab
   workflow_dispatch:
-  schedule:
-    - cron: '0 */4 * * *' # Runs every 4 hours
 
 # Sets permissions of the GITHUB_TOKEN to allow deployment to GitHub Pages
 permissions:
@@ -33,88 +26,38 @@ defaults:
   run:
     shell: bash
 
-env:
-  TZ: Asia/Shanghai
-  
 jobs:
   # Build job
   build:
     runs-on: ubuntu-latest
     env:
-      HUGO_VERSION: 0.131.0
+      HUGO_VERSION: 0.147.9
     steps:
       - name: Checkout
         uses: actions/checkout@v4
         with:
           fetch-depth: 0  # fetch all history for .GitInfo and .Lastmod
-          submodules: false  # 🔧 禁用子模块检出，避免source-repo错误
-      
+          submodules: false  # 修改：禁用子模块以避免source-repo问题
       - name: Setup Go
         uses: actions/setup-go@v5
         with:
-          go-version: '1.21'
-      
+          go-version: '1.21'  # 修改：使用稳定版本
       - name: Setup Pages
         id: pages
         uses: actions/configure-pages@v4
-      
       - name: Setup Hugo
         run: |
           wget -O ${{ runner.temp }}/hugo.deb https://github.com/gohugoio/hugo/releases/download/v${HUGO_VERSION}/hugo_extended_${HUGO_VERSION}_linux-amd64.deb \
           && sudo dpkg -i ${{ runner.temp }}/hugo.deb
-      
-      - name: Clean up unwanted directories
-        run: |
-          # 删除可能导致问题的目录
-          rm -rf source-repo || true
-          rm -f .gitmodules || true
-          echo "Cleaned up directories"
-      
-      - name: Install Node.js dependencies
-        run: |
-          if [ -f package-lock.json ] || [ -f yarn.lock ]; then
-            npm ci || yarn --frozen-lockfile
-          fi
-      
-      - name: Initialize Hugo modules
-        run: |
-          echo "Initializing Hugo modules..."
-          hugo version
-          
-          # 确保内容目录存在
-          if [ ! -d "content" ]; then
-            echo "创建默认内容目录..."
-            mkdir -p content
-            echo '---\ntitle: "AI洞察日报"\n---\n\n# AI洞察日报\n\n欢迎访问AI洞察日报！\n' > content/_index.md
-          fi
-          
-          # 初始化Hugo模块
-          if [ -f "go.mod" ]; then
-            hugo mod download || true
-            hugo mod tidy || true
-          fi
-      
       - name: Build with Hugo
         env:
           # For maximum backward compatibility with Hugo modules
           HUGO_ENVIRONMENT: production
           HUGO_ENV: production
         run: |
-          echo "Building Hugo site..."
-          
           hugo \
             --gc --minify \
             --baseURL "${{ steps.pages.outputs.base_url }}/"
-          
-          echo "Build completed. Contents of public directory:"
-          ls -la public/ || echo "Public directory not found"
-          
-          # 检查public目录是否有内容
-          if [ ! -d "public" ] || [ -z "$(ls -A public)" ]; then
-            echo "Error: public directory is empty or doesn't exist"
-            exit 1
-          fi
-      
       - name: Upload artifact
         uses: actions/upload-pages-artifact@v3
         with:
