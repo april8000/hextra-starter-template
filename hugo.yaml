@@ -1,0 +1,51 @@
+# Hugo configuration file
+baseURL: https://april8000.github.io/Hextra-AI-Insight-Daily/
+title: AI洞察日报
+
+# import hextra as module
+module:
+  imports:
+    - path: github.com/imfing/hextra
+
+markup:
+  # allow raw html
+  goldmark:
+    renderer:
+      unsafe: true
+
+  # enable hextra syntax highlight
+  highlight:
+    noClasses: false
+
+menu:
+  main:
+    - name: AI日报
+      pageRef: /docs
+      weight: 1
+    - name: 关于
+      pageRef: /about
+      weight: 2
+    - name: GitHub ↗
+      url: "https://github.com/april8000/Hextra-AI-Insight-Daily"
+      weight: 3
+    - name: Search
+      weight: 4
+      params:
+        type: search
+    - name: GitHub
+      weight: 5
+      url: "https://github.com/april8000/Hextra-AI-Insight-Daily"
+      params:
+        icon: github
+
+params:
+  navbar:
+    displayTitle: true
+    displayLogo: false
+
+  footer:
+    displayCopyright: false
+    displayPoweredBy: true
+
+  editURL:
+    enable: false  # 修改：禁用编辑链接
